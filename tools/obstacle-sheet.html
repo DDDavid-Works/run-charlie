@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Obstacle sheet</title>
+  <style>
+    body { margin: 0; padding: 16px; background: #1b1f2a; color: #f2f4f8; font-family: system-ui, sans-serif; }
+    h1 { font-size: 1.2rem; margin: 0 0 4px; }
+    p { margin: 0 0 16px; opacity: 0.8; font-size: 0.9rem; }
+    .grid { display: flex; flex-wrap: wrap; gap: 16px; }
+    figure { margin: 0; }
+    figcaption { margin-top: 4px; font-size: 0.85rem; text-align: center; }
+    canvas { display: block; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Obstacle sheet</h1>
+  <p>Drawn by the game's own code at 3x. The dog stands beside each obstacle for scale. Ground obstacles: jump. Overhead obstacles: crawl.</p>
+  <div id="out"></div>
+  <script type="module">
+    import { CONFIG } from '../scripts/config.js';
+    import { ObstacleManager } from '../scripts/obstacles.js';
+    import { Player } from '../scripts/player.js';
+    import { THEMES } from '../scripts/themes.js';
+    import { drawBackground } from '../scripts/background.js';
+
+    const SCALE = 3;
+    const GROUND = [['small', 'Hydrant'], ['tall', 'Cone'], ['trashcan', 'Trash can'], ['double', 'Doghouse']];
+    const OVERHEAD = [['overhead', 'Short overhead'], ['overheadWide', 'Wide overhead']];
+    const out = document.getElementById('out');
+
+    for (const [key, theme] of Object.entries(THEMES)) {
+      const h2 = document.createElement('h1');
+      h2.textContent = `${theme.label} theme`;
+      h2.style.marginTop = '20px';
+      out.appendChild(h2);
+      const grid = document.createElement('div');
+      grid.className = 'grid';
+      out.appendChild(grid);
+
+      for (const [variant, label] of [...GROUND, ...OVERHEAD]) {
+        const m = new ObstacleManager();
+        const o = m.spawn(variant);
+        const isOverhead = o.type === 'overhead';
+        // Crop around the obstacle: full height for overhead ones, bottom strip for ground ones.
+        const pad = 70;
+        const left = 0;
+        const width = o.w + pad + 20;
+        const top = isOverhead ? o.y - 16 : CONFIG.groundY - o.h - 24;
+        const height = CONFIG.groundY + 40 - top;
+        o.x = left + pad;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width * SCALE;
+        canvas.height = height * SCALE;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(SCALE, SCALE);
+        ctx.translate(-left, -top);
+        ctx.beginPath();
+        ctx.rect(left, top, width, height);
+        ctx.clip();
+        drawBackground(ctx, 400, theme);
+        m.draw(ctx, theme);
+        const p = new Player();
+        p.x = left + 6;
+        p.draw(ctx, theme);
+
+        const fig = document.createElement('figure');
+        const cap = document.createElement('figcaption');
+        cap.textContent = `${label} (${theme.skins[variant] || theme.skins.overhead})`;
+        fig.append(canvas, cap);
+        grid.appendChild(fig);
+      }
+    }
+  </script>
+</body>
+</html>

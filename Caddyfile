@@ -1,0 +1,23 @@
+{
+	admin off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode gzip zstd
+
+	# HTML and the service worker must always be revalidated so updates ship.
+	@revalidate path / /index.html /privacy.html /contact.html /sw.js /manifest.webmanifest
+	header @revalidate Cache-Control "no-cache"
+
+	# Other assets are cached briefly; the service worker versions them anyway.
+	@assets path /styles/* /scripts/* /icons/*
+	header @assets Cache-Control "public, max-age=3600"
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	file_server
+}

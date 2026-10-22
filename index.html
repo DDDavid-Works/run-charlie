@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1b1f2a">
+  <title>Runner – Free Endless Runner Game</title>
+  <meta name="description" content="Play Runner, a free endless runner you can start instantly. Jump over hydrants and cones, crawl under what hangs overhead, and beat your best score. No download or sign-up.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Runner – Free Endless Runner Game">
+  <meta property="og:description" content="Jump over hydrants and cones, crawl under what hangs overhead, and beat your best score. Plays instantly on desktop and mobile.">
+  <meta name="twitter:card" content="summary">
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Runner">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <header class="site-header">
+    <h1>Runner</h1>
+    <p class="tagline">Run, jump, crawl, and survive as long as you can.</p>
+    <button id="theme-btn" class="theme-btn" type="button" aria-label="Switch to day theme">☀ Day</button>
+  </header>
+
+  <main>
+    <!-- Portrait: canvas on top, Crawl (left) and Jump (right) below.
+         Landscape/short screens: Crawl | canvas | Jump. -->
+    <div class="stage">
+      <div class="game-wrap">
+        <canvas id="game" width="600" height="300" aria-label="Endless runner game"></canvas>
+        <div id="end-actions" class="end-actions" hidden>
+          <button id="restart" class="btn" type="button">Restart</button>
+          <button id="share-btn" class="btn btn-secondary" type="button">Share</button>
+        </div>
+      </div>
+      <button id="slide-btn" class="ctl ctl-slide" type="button" data-game-control aria-label="Crawl (hold)">
+        <span class="ctl-icon" aria-hidden="true">▼</span>Crawl<small>hold</small>
+      </button>
+      <button id="jump-btn" class="ctl ctl-jump" type="button" data-game-control aria-label="Jump">
+        <span class="ctl-icon" aria-hidden="true">▲</span>Jump
+      </button>
+    </div>
+    <p id="share-note" class="share-note" role="status" aria-live="polite"></p>
+    <p id="status" class="sr-only" role="status" aria-live="polite"></p>
+    <p id="load-error" class="notice" hidden>The game didn't load. Try refreshing the page, or use a current browser.</p>
+    <noscript><p class="notice">Runner needs JavaScript to play. Please enable it and reload.</p></noscript>
+
+    <p class="instructions">
+      <span class="hint-keys"><strong>Desktop:</strong> press <kbd>Space</kbd> or <kbd>↑</kbd> to start and jump over obstacles;
+      hold <kbd>↓</kbd> or <kbd>S</kbd> to crawl under hanging obstacles.</span>
+      <span class="hint-touch"><strong>Touch:</strong> tap <b>Jump</b> to start and hop over obstacles; hold <b>Crawl</b> to go under hanging obstacles.</span>
+    </p>
+
+    <section class="prose" aria-labelledby="how-title">
+      <h2 id="how-title">How to play</h2>
+      <p>You run automatically. Your only job is to read what's coming and pick the right move.</p>
+      <ul>
+        <li><strong>Jump</strong> over hydrants, cones and doghouses. You can only jump while on the ground, so time it.</li>
+        <li><strong>Crawl</strong> under hanging obstacles such as park benches, road barriers, laundry and low tree branches. Hold the crawl button or key to stay low; a crawl always lasts a moment, and won't end while you're still under one.</li>
+        <li>The game speeds up as you go, and new obstacle types appear as your score grows.</li>
+        <li>Your best score is saved in your browser only. It isn't verified or ranked against other players.</li>
+      </ul>
+      <p>On a phone, you can add Runner to your home screen and play it offline.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <nav aria-label="Footer">
+      <a href="index.html">Play</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+  </footer>
+
+  <script type="module" src="scripts/main.js"></script>
+  <script>
+    // If the game scripts failed to load, say so instead of leaving a blank canvas.
+    setTimeout(function () {
+      if (!window.__gameStarted) document.getElementById('load-error').hidden = false;
+    }, 4000);
+  </script>
+</body>
+</html>

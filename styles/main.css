@@ -1,0 +1,214 @@
+:root {
+  --bg: #1b1f2a;
+  --fg: #f2f4f8;
+  --accent: #ffb347;
+  --panel: #2a3042;
+  --slide: #5ac8e0;
+  --jump: #ffb347;
+  --gutter: 1rem;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* keep content clear of notches and the home indicator */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.site-header { text-align: center; padding: 0.75rem var(--gutter) 0; }
+.site-header h1 { margin: 0; font-size: 1.6rem; }
+.tagline { margin: 0.2rem 0 0.75rem; opacity: 0.8; font-size: 0.95rem; }
+
+main { width: 100%; max-width: 900px; padding: 0 var(--gutter) 1.5rem; }
+
+/* Portrait / default: canvas on top, Slide left and Jump right underneath. */
+.stage {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    "game  game"
+    "slide jump";
+  gap: 0.75rem;
+}
+
+.game-wrap { grid-area: game; position: relative; width: 100%; }
+
+/* touch-action only on the game surface and controls so the rest of the page still scrolls */
+canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  height: auto;
+  background: var(--panel);
+  border-radius: 8px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[hidden] { display: none !important; }
+
+/* Game Over actions, centred over the lower part of the canvas. */
+.end-actions {
+  position: absolute;
+  left: 50%;
+  top: 46%; /* below the score text, above the runner */
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.6rem;
+}
+
+.btn {
+  padding: 0.7rem 1.4rem;
+  min-height: 44px;
+  font: inherit;
+  font-size: clamp(0.95rem, 3.4vw, 1.1rem);
+  font-weight: 600;
+  color: #1b1f2a;
+  background: var(--accent);
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.btn-secondary { background: transparent; color: var(--fg); border-color: #8a93b0; }
+.btn:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.btn:disabled { opacity: 0.6; cursor: default; }
+
+.share-note { min-height: 1.4em; margin: 0.5rem 0 0; text-align: center; font-size: 0.9rem; color: #c4cbe0; word-break: break-all; }
+
+.notice {
+  background: #3a2f2f;
+  border: 1px solid #8a5a5a;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  text-align: center;
+}
+
+/* Text pages and the How to play section. */
+.prose { max-width: 42rem; margin: 1.5rem auto 0; line-height: 1.65; }
+.prose h2 { font-size: 1.4rem; margin: 0 0 0.5rem; }
+.prose h3 { font-size: 1.1rem; margin: 1.5rem 0 0.25rem; }
+.prose a, .site-footer a { color: var(--slide); }
+.muted { opacity: 0.7; font-size: 0.9rem; }
+.home-link { color: inherit; text-decoration: none; }
+
+.form { display: grid; gap: 0.5rem; margin: 1rem 0; }
+.form label { font-weight: 600; }
+.form input, .form textarea {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid #566080;
+  border-radius: 6px;
+}
+.form .btn { justify-self: start; margin-top: 0.5rem; }
+.form-result { margin: 0; min-height: 1.4em; }
+.hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+.site-footer { width: 100%; padding: 1rem var(--gutter) 1.5rem; text-align: center; margin-top: auto; }
+.site-footer nav { display: flex; gap: 1.25rem; justify-content: center; }
+
+/* On-screen controls. Large touch targets, labelled with text and an arrow icon
+   (not colour alone). Hidden on mouse-and-keyboard devices. */
+.ctl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-height: clamp(120px, 26dvh, 220px);
+  border: 0;
+  border-radius: 16px;
+  font: inherit;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1b1f2a;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+.ctl small { font-size: 0.8rem; font-weight: 600; opacity: 0.75; }
+.ctl-icon { font-size: 1.6rem; line-height: 1; }
+.ctl-slide { grid-area: slide; background: var(--slide); }
+.ctl-jump { grid-area: jump; background: var(--jump); }
+.ctl.pressed { transform: scale(0.97); filter: brightness(0.85); }
+.ctl:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .ctl { display: none; }
+  .stage { grid-template-areas: "game game"; }
+  .hint-touch { display: none; }
+}
+@media (hover: none), (pointer: coarse) {
+  .hint-keys { display: none; }
+}
+
+/* Landscape phones / short viewports: Slide | canvas | Jump, so nothing overflows. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .site-header { display: none; }
+  main { max-width: none; padding: 0.5rem var(--gutter); }
+  .stage {
+    grid-template-columns: minmax(90px, 1fr) minmax(0, 2.4fr) minmax(90px, 1fr);
+    grid-template-areas: "slide game jump";
+    align-items: stretch;
+  }
+  .ctl { min-height: 0; }
+  .instructions { display: none; }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.instructions { text-align: center; opacity: 0.85; line-height: 1.6; font-size: 0.95rem; }
+kbd {
+  background: #3a4258;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+/* Theme toggle, top right of the header. */
+.site-header { position: relative; width: 100%; max-width: 900px; }
+.theme-btn {
+  position: absolute;
+  top: 0.25rem;
+  right: var(--gutter);
+  height: 38px;
+  padding: 0 0.8rem;
+  background: var(--panel);
+  color: var(--fg);
+  border: 2px solid #8a93b0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.theme-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+/* Game Over buttons sit on the sky, so the outlined one needs its own backing in daylight. */
+[data-theme="day"] .btn-secondary { background: rgba(27, 31, 42, 0.8); }
