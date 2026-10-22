@@ -1,7 +1,7 @@
 // Service worker: precaches the app shell so the game loads and plays offline.
 // To ship an update, change CACHE_VERSION. The new worker installs in the
 // background and takes over on the next page load (never mid-run).
-const CACHE_VERSION = 'v20';
+const CACHE_VERSION = 'v22';
 const CACHE_NAME = `runner-${CACHE_VERSION}`;
 
 // Keep in sync with the files the pages load (tests/run.mjs checks this).

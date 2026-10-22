@@ -7,6 +7,10 @@
 // overhead variants (crawl). A skin can also be a list of drawings, and each
 // obstacle picks one at random. Overhead drawings available: bench, barrier,
 // laundry, laundryRow, branch.
+//
+// obstacleFx styles every obstacle drawing: shadow (ground oval), outline and
+// outlineWidth (world px), tint (washed over the art, null for none), rim and
+// rimWidth (lit top edge, null for none), glow (barrier lamps, null for none).
 export const THEMES = {
   night: {
     label: 'Night',
@@ -27,6 +31,16 @@ export const THEMES = {
     accent: '#ffb347',
     fx: { dust: '200, 205, 220' },
     skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'bench', overheadWide: 'barrier' },
+    // Cool, dimmed colors under moonlight, with a pale top edge.
+    obstacleFx: {
+      shadow: 'rgba(8, 10, 20, 0.45)',
+      outline: '#141826',
+      outlineWidth: 1.5,
+      tint: 'rgba(36, 46, 92, 0.3)',
+      rim: 'rgba(214, 224, 255, 0.4)',
+      rimWidth: 1.5,
+      glow: 'rgba(255, 179, 71, 0.45)',
+    },
   },
   day: {
     label: 'Day',
@@ -47,6 +61,15 @@ export const THEMES = {
     accent: '#c2410c',
     fx: { dust: '140, 115, 80' },
     skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'laundry', overheadWide: ['laundryRow', 'branch'] },
+    obstacleFx: {
+      shadow: 'rgba(70, 45, 15, 0.28)',
+      outline: 'rgba(27, 31, 42, 0.85)',
+      outlineWidth: 1.5,
+      tint: null,
+      rim: null,
+      rimWidth: 0,
+      glow: null,
+    },
   },
 };
 

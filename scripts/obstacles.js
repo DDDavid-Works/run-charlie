@@ -60,6 +60,7 @@ const COLORS = {
   canDark: 'rgba(27, 31, 42, 0.3)',
   canLid: '#a9b8cc',
   leaf: '#2f8f4e',
+  leafLight: '#4caf6a',
   leafDark: 'rgba(27, 31, 42, 0.3)',
   trunk: '#6b4a2f',
   apple: '#ff6b6b',
@@ -82,6 +83,90 @@ const COLORS = {
   sock: '#8c6bd6',
   sockCuff: '#f6f1e6',
 };
+
+// --- Theme effects (cosmetic): outline, night tint, moonlit top edge ---
+
+// Scratch canvases for building sprites. Each is resized to exactly the sprite
+// being built (which also clears it): once a canvas has been drawn from, the
+// browser copies its whole backing store before the next change, so a scratch
+// canvas left at the size of the largest obstacle makes every sprite slow.
+const layers = [];
+function layer(i, w, h) {
+  if (!layers[i]) layers[i] = document.createElement('canvas');
+  const c = layers[i];
+  c.width = w;
+  c.height = h;
+  return { c, ctx: c.getContext('2d') };
+}
+
+// Spare sprite canvases from obstacles that scrolled off, so spawning rarely
+// allocates. A laundry row alone uses about ten layers.
+const spritePool = [];
+const SPRITE_POOL_MAX = 32;
+
+// Device-pixel size of the art box `b` at scale `s`.
+const fxSize = (b, s) => ({ w: Math.ceil(b.w * s) + 2, h: Math.ceil(b.h * s) + 2 });
+
+// A world-space box grown by `pad` on every side (room for the outline).
+const box = (x, y, w, h, pad = 4) => ({ x: x - pad, y: y - pad, w: w + pad * 2, h: h + pad * 2 });
+
+// Renders `paint` through the effects once into a sprite canvas, with the art
+// box's top-left at the sprite's (0, 0). Drawing the sprite later is a single
+// drawImage, however many effects the theme has.
+function renderSprite(b, s, fx, paint) {
+  const { w, h } = fxSize(b, s);
+  const c = spritePool.pop() || document.createElement('canvas');
+  c.width = w; // also clears it
+  c.height = h;
+  const sctx = c.getContext('2d');
+  composeFx(sctx, 0, 0, w, h, s, fx, (a) => {
+    a.setTransform(s, 0, 0, s, -b.x * s, -b.y * s);
+    paint(a);
+  });
+  return c;
+}
+
+// Draws the art (via `paintArt`, which sets its own transform) into a scratch
+// canvas, tints it, then composites outline, art and rim onto `dst` at device
+// position (dx, dy). `dst` must have an identity transform.
+function composeFx(dst, dx, dy, w, h, s, fx, paintArt) {
+  const art = layer(0, w, h);
+  paintArt(art.ctx);
+  art.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (fx.tint) {
+    art.ctx.globalCompositeOperation = 'source-atop';
+    art.ctx.fillStyle = fx.tint;
+    art.ctx.fillRect(0, 0, w, h);
+  }
+
+  // Silhouette, filled with a single color.
+  const tinted = (i, color) => {
+    const l = layer(i, w, h);
+    l.ctx.drawImage(art.c, 0, 0, w, h, 0, 0, w, h);
+    l.ctx.globalCompositeOperation = 'source-in';
+    l.ctx.fillStyle = color;
+    l.ctx.fillRect(0, 0, w, h);
+    return l;
+  };
+
+  if (fx.outline && fx.outlineWidth > 0) {
+    const sil = tinted(1, fx.outline);
+    const r = fx.outlineWidth * s;
+    for (let a = 0; a < 8; a++) {
+      const ox = Math.round(Math.cos((a * Math.PI) / 4) * r);
+      const oy = Math.round(Math.sin((a * Math.PI) / 4) * r);
+      dst.drawImage(sil.c, 0, 0, w, h, dx + ox, dy + oy, w, h);
+    }
+  }
+  dst.drawImage(art.c, 0, 0, w, h, dx, dy, w, h);
+  if (fx.rim) {
+    // Top-edge band: the silhouette minus itself shifted down.
+    const rim = tinted(2, fx.rim);
+    rim.ctx.globalCompositeOperation = 'destination-out';
+    rim.ctx.drawImage(art.c, 0, 0, w, h, 0, Math.round(fx.rimWidth * s), w, h);
+    dst.drawImage(rim.c, 0, 0, w, h, dx, dy, w, h);
+  }
+}
 
 // --- Pure spawning rules (exported so they can be tested without a canvas) ---
 
@@ -117,10 +202,14 @@ export class ObstacleManager {
   }
 
   reset() {
+    for (const o of this.list || []) this.releaseSprite(o);
+    for (const u of this.upcoming || []) this.releaseSprite(u.o);
     this.list = [];
     // Obstacles waiting to spawn, chosen at least one spawn ahead so the gap
     // that precedes each can account for a jump <-> slide switch. A combo
     // queues all its steps at once; steps after the first carry a fixed gap.
+    // Each entry's obstacle (u.o) already exists, so its sprites can be built
+    // before it appears (see draw).
     this.upcoming = [];
     this.overheadSeen = false;
     this.queueNext(0);
@@ -132,11 +221,11 @@ export class ObstacleManager {
     const name = pickVariant(tier, this.rng);
     const combo = O.combos[name];
     if (!combo) {
-      this.upcoming.push({ name });
+      this.upcoming.push({ name, o: this.makeObstacle(name) });
       return;
     }
     combo.steps.forEach((step, i) => {
-      this.upcoming.push({ name: step, combo: name, comboStep: i, gap: i > 0 ? combo.gaps[i - 1] : undefined });
+      this.upcoming.push({ name: step, o: this.makeObstacle(step), combo: name, comboStep: i, gap: i > 0 ? combo.gaps[i - 1] : undefined });
     });
   }
 
@@ -144,13 +233,17 @@ export class ObstacleManager {
     const dx = speed * dt;
     for (const o of this.list) o.x -= dx;
     // `tail` is decoration trailing past the hitbox; keep it until it has scrolled off too.
-    this.list = this.list.filter((o) => o.x + o.w + (o.tail || 0) > 0);
+    this.list = this.list.filter((o) => {
+      const onScreen = o.x + o.w + (o.tail || 0) > 0;
+      if (!onScreen) this.releaseSprite(o);
+      return onScreen;
+    });
 
     this.distanceToNext -= dx;
     if (this.distanceToNext <= 0) {
       const tier = tierFor(score);
       const step = this.upcoming.shift();
-      const o = this.spawn(step.name);
+      const o = this.spawn(step.name, step.o);
       if (step.combo) Object.assign(o, { combo: step.combo, comboStep: step.comboStep });
       if (o.type === ObstacleType.OVERHEAD && !this.overheadSeen) {
         o.intro = true;
@@ -171,17 +264,21 @@ export class ObstacleManager {
     }
   }
 
-  spawn(name) {
+  // Puts an obstacle (a queued one, or a new one) on the track at the right edge.
+  spawn(name, o = this.makeObstacle(name)) {
+    o.x = CONFIG.canvas.width;
+    this.list.push(o);
+    return o;
+  }
+
+  makeObstacle(name) {
     const v = O.variants[name];
     const x = CONFIG.canvas.width;
     // seed fixes per-obstacle looks (which skin, laundry colors); from this.rng so seeded runs repeat.
     const seed = this.rng();
-    const o =
-      v.type === ObstacleType.OVERHEAD
-        ? { name, type: v.type, x, y: overheadTop(), w: v.w, h: CONFIG.groundY - O.overheadClearance - overheadTop(), tail: v.tail || 0, seed }
-        : { name, type: v.type, x, y: CONFIG.groundY - v.h, w: v.w, h: v.h, posts: v.posts || 1, seed };
-    this.list.push(o);
-    return o;
+    return v.type === ObstacleType.OVERHEAD
+      ? { name, type: v.type, x, y: overheadTop(), w: v.w, h: CONFIG.groundY - O.overheadClearance - overheadTop(), tail: v.tail || 0, seed }
+      : { name, type: v.type, x, y: CONFIG.groundY - v.h, w: v.w, h: v.h, posts: v.posts || 1, seed };
   }
 
   // True if an overhead obstacle is above the horizontal span [x0, x1], i.e.
@@ -194,12 +291,131 @@ export class ObstacleManager {
 
   // The theme's skins pick which drawing each variant gets (see themes.js). A
   // skin may be a list of drawings; each obstacle then picks one by its seed.
+  // Every obstacle gets a ground shadow and is painted through the theme's
+  // effects (theme.obstacleFx). None of it changes the collision box.
+  // Each obstacle is drawn from cached layers: images rendered once (effects
+  // included), then only moved each frame. Swaying parts are their own layers,
+  // offset or rotated by layer.motion(o). Layers for queued obstacles are built
+  // ahead, a layer per frame, so a spawn never stalls a frame rendering them.
   draw(ctx, theme) {
+    const fx = theme.obstacleFx;
+    const m = ctx.getTransform(); // uniform scale + translation (see Game.draw)
+    const s = m.a;
     for (const o of this.list) {
-      const skins = theme.skins[o.name];
-      const skin = Array.isArray(skins) ? skins[Math.floor(o.seed * skins.length)] : skins;
-      if (o.type === ObstacleType.OVERHEAD) this.drawOverhead(ctx, o, skin);
-      else this.drawGround(ctx, o, skin);
+      const skin = this.skinFor(o, theme);
+      this.buildLayers(o, theme, s); // normally already built while queued
+      this.drawShadow(ctx, o, fx.shadow);
+      ctx.save();
+      for (const l of o.layers) {
+        const { dx = 0, angle = 0 } = l.motion ? l.motion(o) : {};
+        const x = s * (o.x + l.relX + dx) + m.e;
+        const y = s * l.y + m.f;
+        if (angle) {
+          const px = s * (o.x + l.pivotRelX) + m.e;
+          const py = s * l.pivotY + m.f;
+          ctx.setTransform(Math.cos(angle), Math.sin(angle), -Math.sin(angle), Math.cos(angle), px, py);
+          ctx.drawImage(l.c, x - px, y - py);
+        } else {
+          // Still layers snap to whole pixels to stay crisp; swaying ones don't, so they move smoothly.
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(l.c, l.motion ? x : Math.round(x), l.motion ? y : Math.round(y));
+        }
+      }
+      ctx.restore();
+      if (fx.glow && skin === 'barrier') this.drawLampGlow(ctx, o, fx.glow);
+    }
+    for (const u of this.upcoming) {
+      if (!this.buildLayers(u.o, theme, s, 1)) break;
+    }
+  }
+
+  skinFor(o, theme) {
+    const skins = theme.skins[o.name];
+    return Array.isArray(skins) ? skins[Math.floor(o.seed * skins.length)] : skins;
+  }
+
+  // Renders o's layer sprites for this theme and canvas scale, at most `limit`
+  // of them per call (the rest on later calls). Starts over if the theme or
+  // scale changed. Layers are stored relative to o.x, so they follow the
+  // obstacle wherever it is. Returns true once every layer is built.
+  buildLayers(o, theme, s, limit = Infinity) {
+    if (!o.layers || o.layersTheme !== theme || o.layersScale !== s) {
+      this.releaseSprite(o);
+      o.layerDefs = this.layersFor(o, this.skinFor(o, theme));
+      o.layers = [];
+      o.layersTheme = theme;
+      o.layersScale = s;
+    }
+    for (; limit > 0 && o.layers.length < o.layerDefs.length; limit--) {
+      const l = o.layerDefs[o.layers.length];
+      o.layers.push({
+        c: renderSprite(l.bounds, s, theme.obstacleFx, l.paint),
+        relX: l.bounds.x - o.x,
+        y: l.bounds.y,
+        pivotRelX: l.pivot ? l.pivot.x - o.x : 0,
+        pivotY: l.pivot ? l.pivot.y : 0,
+        motion: l.motion,
+      });
+    }
+    return o.layers.length === o.layerDefs.length;
+  }
+
+  // The layers an obstacle is drawn from, in order: each { paint, bounds } in
+  // world coordinates, plus { pivot, motion } for a part that sways. Most
+  // drawings are a single still layer.
+  layersFor(o, skin) {
+    if (skin === 'laundry') return this.laundryLayers(o);
+    if (skin === 'laundryRow') return this.laundryRowLayers(o);
+    if (skin === 'branch') return this.branchLayers(o);
+    const paint = o.type === ObstacleType.OVERHEAD
+      ? (c) => this.drawOverhead(c, o, skin)
+      : (c) => this.drawGround(c, o, skin);
+    return [{ paint, bounds: this.artBounds(o) }];
+  }
+
+  releaseSprite(o) {
+    for (const l of o.layers || []) {
+      if (spritePool.length < SPRITE_POOL_MAX) spritePool.push(l.c);
+    }
+    o.layers = null;
+    o.layerDefs = null;
+  }
+
+  // World-space box that holds everything a drawing paints (posts, lamps, the
+  // laundry tail and sway), with room for the outline.
+  artBounds(o) {
+    const pad = 8;
+    const top = o.type === ObstacleType.OVERHEAD ? o.y - 12 : o.y;
+    return { x: o.x - pad, y: top - pad, w: o.w + (o.tail || 0) + pad * 2, h: CONFIG.groundY - top + pad * 2 };
+  }
+
+  // A soft oval on the ground: tight under ground obstacles, wide and faint
+  // under overhead ones (they are higher up, so their shadow is more diffuse).
+  drawShadow(ctx, o, color) {
+    const overhead = o.type === ObstacleType.OVERHEAD;
+    ctx.save();
+    ctx.fillStyle = color;
+    if (overhead) ctx.globalAlpha = 0.6;
+    ctx.beginPath();
+    ctx.ellipse(o.x + o.w / 2, CONFIG.groundY + 1, o.w / 2 + (overhead ? 6 : 4), overhead ? 4 : 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Night: the barrier's amber lamps glow and stay bright through the tint.
+  drawLampGlow(ctx, o, color) {
+    for (const lx of [o.x + 9, o.x + o.w - 9]) {
+      const g = ctx.createRadialGradient(lx, o.y - 3, 2, lx, o.y - 3, 22);
+      g.addColorStop(0, color);
+      g.addColorStop(1, 'rgba(255, 179, 71, 0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(lx, o.y - 3, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLORS.lamp;
+      ctx.beginPath();
+      ctx.arc(lx, o.y - 3, 4, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 
@@ -305,13 +521,10 @@ export class ObstacleManager {
 
   // Overhead drawings. Each is a solid shape from the obstacle's top edge down to
   // its bottom edge (the full collision box), with posts or legs standing in the
-  // crawl gap below it. The dog is drawn in front of the legs. Hanging parts
-  // sway a little as they scroll past.
+  // crawl gap below it. The dog is drawn in front of the legs. Laundry and tree
+  // are built from layers (see layersFor) so their hanging parts can sway.
   drawOverhead(ctx, o, skin) {
     if (skin === 'barrier') this.drawBarrier(ctx, o);
-    else if (skin === 'laundry') this.drawLaundry(ctx, o);
-    else if (skin === 'laundryRow') this.drawLaundryRow(ctx, o);
-    else if (skin === 'branch') this.drawBranch(ctx, o);
     else this.drawBench(ctx, o);
   }
 
@@ -421,14 +634,25 @@ export class ObstacleManager {
     ctx.fillRect(x - 2, y - 4, 4, 9);
   }
 
-  // Swing an item gently about the washing line so the laundry sways.
-  hangFromLine(ctx, o, cx, draw) {
-    ctx.save();
-    ctx.translate(cx, o.y - 3);
-    ctx.rotate(Math.sin(o.x * 0.05) * 0.025);
-    ctx.translate(-cx, -(o.y - 3));
-    draw();
-    ctx.restore();
+  // The poles and line as a layer. `span` is the line's length.
+  lineLayer(o, span) {
+    return { paint: (c) => this.drawLaundryLine(c, o, span), bounds: box(o.x, o.y - 6, span, CONFIG.groundY - o.y + 6) };
+  }
+
+  // One item hanging from the line, x..x+w and h tall from the line down, with
+  // its two pegs 6px in from each side. It swings gently about its middle on
+  // the line (cx) as it scrolls; the pegs move with it, too little to see.
+  hangingLayer(o, cx, x, w, h, paint, pegInset = 6) {
+    return {
+      paint: (c) => {
+        paint(c);
+        this.drawPeg(c, x + pegInset, o.y - 3);
+        this.drawPeg(c, x + w - pegInset, o.y - 3);
+      },
+      bounds: box(x, o.y - 7, w, h + 7),
+      pivot: { x: cx, y: o.y - 3 },
+      motion: (ob) => ({ angle: Math.sin(ob.x * 0.05) * 0.025 }),
+    };
   }
 
   // A pair of trousers (or shorts, if short) hung by the waistband: waistband,
@@ -515,18 +739,21 @@ export class ObstacleManager {
   // Short overhead (day): one long laundry item on a washing line: a pair of
   // trousers in a random color, or sometimes a striped towel. Which one is fixed
   // per obstacle by its seed. Crawl under it.
-  drawLaundry(ctx, o) {
+  laundryLayers(o) {
     const rand = seeded(o.seed);
     const bottom = o.y + o.h;
-    this.drawLaundryLine(ctx, o);
     const towel = rand() < 0.3;
     const style = pick(towel ? TOWELS : PANTS, rand);
-    this.hangFromLine(ctx, o, o.x + o.w / 2, () => {
-      if (towel) this.drawTowel(ctx, { x: o.x + 11, w: o.w - 22, top: o.y, bottom, fill: style });
-      else this.drawPants(ctx, { x: o.x + 7, w: o.w - 14, top: o.y, bottom, ...style });
-    });
-    this.drawPeg(ctx, o.x + 12, o.y - 3);
-    this.drawPeg(ctx, o.x + o.w - 12, o.y - 3);
+    const x = o.x + (towel ? 11 : 7);
+    const w = o.w - (towel ? 22 : 14);
+    // Pegs sit 12px in from the line's ends, whatever the item's width.
+    return [
+      this.lineLayer(o, o.w),
+      this.hangingLayer(o, o.x + o.w / 2, x, w, bottom - o.y, (c) => {
+        if (towel) this.drawTowel(c, { x, w, top: o.y, bottom, fill: style });
+        else this.drawPants(c, { x, w, top: o.y, bottom, ...style });
+      }, o.x + 12 - x),
+    ];
   }
 
   // Wide overhead (day): a washing line. Three long items (trousers or towels,
@@ -534,7 +761,7 @@ export class ObstacleManager {
   // four normal-length shirts and shorts, past the box, which only decorate: the
   // dog passes under them standing up (see `tail` in config.js). Everything is
   // fixed per obstacle by its seed, so a row never changes as it scrolls past.
-  drawLaundryRow(ctx, o) {
+  laundryRowLayers(o) {
     const rand = seeded(o.seed);
     const bottom = o.y + o.h;
 
@@ -555,73 +782,165 @@ export class ObstacleManager {
     }
     // The end pole stands just past the last item (or just past the box if there are none).
     const span = o.w + (shorts.length ? cursor - 2 : 6);
-    this.drawLaundryLine(ctx, o, span);
+    const layers = [this.lineLayer(o, span)];
 
     for (const { center, towel, style } of longs) {
       const w = towel ? 32 : 40;
       const x = o.x + center - w / 2;
-      this.hangFromLine(ctx, o, o.x + center, () => {
-        if (towel) this.drawTowel(ctx, { x, w, top: o.y, bottom, fill: style });
-        else this.drawPants(ctx, { x, w, top: o.y, bottom, ...style });
-      });
-      this.drawPeg(ctx, x + 6, o.y - 3);
-      this.drawPeg(ctx, x + w - 6, o.y - 3);
+      layers.push(this.hangingLayer(o, o.x + center, x, w, bottom - o.y, (c) => {
+        if (towel) this.drawTowel(c, { x, w, top: o.y, bottom, fill: style });
+        else this.drawPants(c, { x, w, top: o.y, bottom, ...style });
+      }));
     }
 
     const tailX = o.x + o.w;
     for (const item of shorts) {
       const x = tailX + item.x;
-      this.hangFromLine(ctx, o, x + item.w / 2, () => {
-        if (item.shirt) this.drawShirt(ctx, { x, w: item.w, top: o.y, h: item.h, ...item.style });
-        else this.drawPants(ctx, { x, w: item.w, top: o.y, bottom: o.y + 34, ...item.style });
-      });
-      this.drawPeg(ctx, x + 6, o.y - 3);
-      this.drawPeg(ctx, x + item.w - 6, o.y - 3);
+      const h = item.shirt ? item.h : 34;
+      layers.push(this.hangingLayer(o, x + item.w / 2, x, item.w, h, (c) => {
+        if (item.shirt) this.drawShirt(c, { x, w: item.w, top: o.y, h, ...item.style });
+        else this.drawPants(c, { x, w: item.w, top: o.y, bottom: o.y + h, ...item.style });
+      }));
+    }
+    return layers;
+  }
+
+  // A tree with a low limb reaching out over the track. The leafy crown fills
+  // the collision box, the trunk stands at the right end, and the limb runs left
+  // along the crown's underside. Leaf clusters hang from the limb down to the
+  // box's bottom edge and sway (separate layers). Crawl under them.
+  branchLayers(o) {
+    const bottom = o.y + o.h;
+    const leaves = [0.1, 0.36, 0.62].map((f) => {
+      const cx = o.x + o.w * f;
+      return {
+        paint: (c) => this.drawLeafCluster(c, cx, bottom - 7),
+        bounds: box(cx - 9, bottom - 18, 18, 20),
+        motion: (ob) => ({ dx: Math.sin(ob.x * 0.04 + f * 9) * 1.5 }),
+      };
+    });
+    // Own bounds: the tree has no tail, unlike the laundry row on the same variant.
+    const tree = box(o.x, o.y, o.w, CONFIG.groundY - o.y, 8);
+    return [{ paint: (c) => this.drawTree(c, o), bounds: tree }, ...leaves];
+  }
+
+  // Trunk, limb and crown. The crown is a union of round clumps (bumpy
+  // silhouette), shaded darker underneath and lighter on top, with apples.
+  drawTree(ctx, o) {
+    const L = o.x;
+    const R = o.x + o.w;
+    const T = o.y;
+    const B = o.y + o.h;
+    const G = CONFIG.groundY;
+
+    ctx.fillStyle = COLORS.trunk;                    // tapered trunk with a root flare
+    ctx.beginPath();
+    ctx.moveTo(R - 40, G);
+    ctx.quadraticCurveTo(R - 30, G - 4, R - 30, G - 16);
+    ctx.lineTo(R - 28, T + 50);
+    ctx.lineTo(R - 13, T + 50);
+    ctx.lineTo(R - 12, G - 16);
+    ctx.quadraticCurveTo(R - 12, G - 4, R - 3, G);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = COLORS.boardDark;              // bark lines
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(R - 24, G - 4);
+    ctx.quadraticCurveTo(R - 22, B + 12, R - 24, B - 4);
+    ctx.moveTo(R - 18, G - 10);
+    ctx.quadraticCurveTo(R - 16, B + 18, R - 18, B + 4);
+    ctx.stroke();
+
+    ctx.fillStyle = COLORS.trunk;                    // limb, thick at the trunk, thin at the tip
+    ctx.beginPath();
+    ctx.moveTo(R - 26, B - 32);
+    ctx.quadraticCurveTo(L + o.w * 0.45, B - 30, L + 2, B - 24);
+    ctx.quadraticCurveTo(L - 2, B - 20, L + 3, B - 18);
+    ctx.quadraticCurveTo(L + o.w * 0.45, B - 19, R - 26, B - 14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = COLORS.boardDark;                // knot
+    ctx.beginPath();
+    ctx.ellipse(L + o.w * 0.5, B - 21, 3, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Crown clumps: three rows of overlapping circles, nudged up and down. The
+    // top row is inset so the crown rounds into a dome.
+    const clumps = [];
+    for (const [y, r, inset] of [[T + 24, 24, 14], [T + 58, 30, -6], [B - 50, 24, -2]]) {
+      const n = Math.max(2, Math.round((o.w - 2 * inset) / (r * 1.3)));
+      const x0 = L + r + inset;
+      const x1 = R - r - inset;
+      for (let i = 0; i < n; i++) {
+        clumps.push({ x: x0 + ((x1 - x0) * i) / (n - 1), y: y + (i % 2 ? 3 : -3), r });
+      }
+    }
+    const crown = new Path2D();
+    for (const c of clumps) {
+      crown.moveTo(c.x + c.r, c.y);
+      crown.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = COLORS.leaf;
+    ctx.fill(crown);
+    ctx.save();
+    ctx.clip(crown);
+    // Shade: one band across the lower crown with a scalloped top edge.
+    const shadeY = T + (B - T) * 0.52;
+    ctx.fillStyle = COLORS.leafDark;
+    ctx.beginPath();
+    ctx.rect(L - 10, shadeY, o.w + 20, B - shadeY);
+    for (let sx = L - 4; sx < R + 10; sx += 22) {
+      ctx.moveTo(sx + 13, shadeY);
+      ctx.arc(sx, shadeY, 13, 0, Math.PI, true);
+    }
+    ctx.fill();
+    // Sunlit tops on the upper clumps.
+    ctx.fillStyle = COLORS.leafLight;
+    for (const c of clumps.filter((c) => c.y < T + 40)) {
+      ctx.beginPath();
+      ctx.arc(c.x - c.r * 0.2, c.y - c.r * 0.35, c.r * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    for (const [fx, fy] of [[0.22, 0.5], [0.55, 0.28], [0.78, 0.58]]) {
+      const ax = L + o.w * fx;
+      const ay = T + (B - 30 - T) * fy;
+      ctx.fillStyle = COLORS.apple;
+      ctx.beginPath();
+      ctx.arc(ax, ay, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLORS.shine;
+      ctx.beginPath();
+      ctx.arc(ax - 1.5, ay - 1.5, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = COLORS.trunk;                  // stem
+      ctx.fillRect(ax - 0.5, ay - 7, 1.5, 3);
     }
   }
 
-  // A tree with a low branch reaching out over the track: leafy crown, a thick
-  // bark limb across the bottom with a knot and hanging leaves. The trunk stands
-  // at the right end. Crawl under the limb.
-  drawBranch(ctx, o) {
-    const bottom = o.y + o.h;
-    const hem = bottom - 34;
-    ctx.fillStyle = COLORS.trunk;                    // trunk in the crawl gap
-    ctx.fillRect(o.x + o.w - 20, hem, 14, CONFIG.groundY - hem);
-
-    ctx.fillStyle = COLORS.leaf;                     // crown
+  // Three leaves hanging tip-down from a short stem; the stem's top (cy - 11)
+  // meets the limb, the leaf tips reach about cy + 7.
+  drawLeafCluster(ctx, cx, cy) {
+    ctx.strokeStyle = COLORS.trunk;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.roundRect(o.x, o.y, o.w, hem - o.y - 4, [26, 26, 0, 0]);
-    ctx.fill();
-    const bumps = Math.round(o.w / 16);
-    const bw = o.w / bumps;
-    for (let i = 0; i < bumps; i++) {
-      ctx.beginPath();
-      ctx.arc(o.x + bw * (i + 0.5), hem - 6, bw / 2 + 1, 0, Math.PI);
-      ctx.fill();
-    }
-    ctx.fillStyle = COLORS.leafDark;                 // stripes: shape cue, not just color
-    for (let sx = o.x + 8; sx < o.x + o.w - 8; sx += 14) {
-      ctx.fillRect(sx, o.y + 18, 4, hem - o.y - 26);
-    }
-
-    ctx.fillStyle = COLORS.trunk;                    // limb with bark lines and a knot
-    ctx.beginPath();
-    ctx.roundRect(o.x, hem - 4, o.w, 12, 6);
-    ctx.fill();
-    ctx.fillStyle = COLORS.boardDark;
-    for (let sx = o.x + 10; sx < o.x + o.w - 8; sx += 18) {
-      ctx.fillRect(sx, hem - 2, 8, 2);
-    }
-    ctx.beginPath();
-    ctx.arc(o.x + o.w * 0.7, hem + 2, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.moveTo(cx, cy - 11);
+    ctx.lineTo(cx, cy - 4);
+    ctx.stroke();
     ctx.fillStyle = COLORS.leaf;
-    for (const f of [0.2, 0.45, 0.85]) {
-      const sway = Math.sin(o.x * 0.04 + f * 9) * 2;
+    for (const [dx, rot] of [[-4, 0.55], [4, -0.55], [0, 0]]) {
+      // A leaf: pointed at the bottom, round at the stem.
+      ctx.save();
+      ctx.translate(cx + dx * 0.5, cy - 4);
+      ctx.rotate(rot);
       ctx.beginPath();
-      ctx.ellipse(o.x + o.w * f + sway, hem + 14, 5, 8, 0.3, 0, Math.PI * 2);
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(5, 3, 0, 11);
+      ctx.quadraticCurveTo(-5, 3, 0, 0);
       ctx.fill();
+      ctx.restore();
     }
   }
 }
