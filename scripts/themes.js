@@ -2,9 +2,11 @@
 // obstacle drawings are used, never sizes, hitboxes or spawning. To add a theme,
 // add an entry here (and any new obstacle drawings in obstacles.js).
 //
-// skins maps each obstacle variant to a drawing: small, tall and double are
-// ground obstacles (jump); overhead and overheadWide are the two overhead
-// variants (crawl). Overhead drawings available: bench, barrier, laundry, branch.
+// skins maps each obstacle variant to a drawing: small, tall, trashcan and
+// double are ground obstacles (jump); overhead and overheadWide are the two
+// overhead variants (crawl). A skin can also be a list of drawings, and each
+// obstacle picks one at random. Overhead drawings available: bench, barrier,
+// laundry, laundryRow, branch.
 export const THEMES = {
   night: {
     label: 'Night',
@@ -44,7 +46,7 @@ export const THEMES = {
     textDim: '#2f3a52',
     accent: '#c2410c',
     fx: { dust: '140, 115, 80' },
-    skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'laundry', overheadWide: 'branch' },
+    skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'laundry', overheadWide: ['laundryRow', 'branch'] },
   },
 };
 

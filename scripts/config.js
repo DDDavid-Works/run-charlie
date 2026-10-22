@@ -75,7 +75,8 @@ export const CONFIG = {
       trashcan:     { type: 'ground',   w: 30,  h: 42 },
       double:       { type: 'ground',   w: 76,  h: 40, posts: 2 },
       overhead:     { type: 'overhead', w: 60 },
-      overheadWide: { type: 'overhead', w: 130 },
+      // `tail` is cosmetic overhang past the hitbox (see the day theme's laundry row).
+      overheadWide: { type: 'overhead', w: 130, tail: 190 },
     },
     // Difficulty tiers unlock by score. Variants are picked by weight.
     // One new idea at a time: jump only, then slide, then doubles and long

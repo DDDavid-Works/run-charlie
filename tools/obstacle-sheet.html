@@ -39,14 +39,23 @@
       grid.className = 'grid';
       out.appendChild(grid);
 
-      for (const [variant, label] of [...GROUND, ...OVERHEAD]) {
+      // A skin list shows each of its drawings. Laundry is random per obstacle,
+      // so show three samples of it.
+      const cases = [...GROUND, ...OVERHEAD].flatMap(([variant, label]) =>
+        [].concat(theme.skins[variant]).flatMap((skin) =>
+          /^laundry/.test(skin) ? [0.05, 0.4, 0.8].map((seed) => [variant, label, skin, seed]) : [[variant, label, skin, 0.5]]
+        )
+      );
+      for (const [variant, label, skin, seed] of cases) {
         const m = new ObstacleManager();
         const o = m.spawn(variant);
+        o.seed = seed;
+        const sheetTheme = { ...theme, skins: { ...theme.skins, [variant]: skin } };
         const isOverhead = o.type === 'overhead';
         // Crop around the obstacle: full height for overhead ones, bottom strip for ground ones.
         const pad = 70;
         const left = 0;
-        const width = o.w + pad + 20;
+        const width = o.w + (o.tail || 0) + pad + 20;
         const top = isOverhead ? o.y - 16 : CONFIG.groundY - o.h - 24;
         const height = CONFIG.groundY + 40 - top;
         o.x = left + pad;
@@ -61,14 +70,14 @@
         ctx.rect(left, top, width, height);
         ctx.clip();
         drawBackground(ctx, 400, theme);
-        m.draw(ctx, theme);
+        m.draw(ctx, sheetTheme);
         const p = new Player();
         p.x = left + 6;
         p.draw(ctx, theme);
 
         const fig = document.createElement('figure');
         const cap = document.createElement('figcaption');
-        cap.textContent = `${label} (${theme.skins[variant] || theme.skins.overhead})`;
+        cap.textContent = `${label} (${skin})`;
         fig.append(canvas, cap);
         grid.appendChild(fig);
       }
