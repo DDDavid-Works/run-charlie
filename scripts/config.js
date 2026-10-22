@@ -103,6 +103,9 @@ export const CONFIG = {
     // gap gives the player time to land and react before the next action.
     minGapSeconds: 1.0,
     typeSwitchExtraGap: 0.3, // extra seconds when switching jump <-> slide
+    // Extra seconds before and after the first overhead of a run, so the
+    // player meets the slide on its own before it is mixed in.
+    firstOverheadExtraGap: 1.0,
     firstSpawnDelay: 1.2,    // seconds before the first obstacle appears
   },
 

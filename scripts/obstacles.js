@@ -122,6 +122,7 @@ export class ObstacleManager {
     // that precedes each can account for a jump <-> slide switch. A combo
     // queues all its steps at once; steps after the first carry a fixed gap.
     this.upcoming = [];
+    this.overheadSeen = false;
     this.queueNext(0);
     // distance (px) still to travel before the next obstacle spawns
     this.distanceToNext = CONFIG.speed.start * O.firstSpawnDelay;
@@ -151,10 +152,17 @@ export class ObstacleManager {
       const step = this.upcoming.shift();
       const o = this.spawn(step.name);
       if (step.combo) Object.assign(o, { combo: step.combo, comboStep: step.comboStep });
+      if (o.type === ObstacleType.OVERHEAD && !this.overheadSeen) {
+        o.intro = true;
+        this.overheadSeen = true;
+      }
       if (!this.upcoming.length) this.queueNext(tier);
       const next = this.upcoming[0];
-      const switched = O.variants[next.name].type !== o.type;
-      const gap = next.gap ?? gapSeconds(tier, switched, this.rng);
+      const nextType = O.variants[next.name].type;
+      let gap = next.gap ?? gapSeconds(tier, nextType !== o.type, this.rng);
+      // Space out the run's first overhead: before it, and after it.
+      const introNext = nextType === ObstacleType.OVERHEAD && !this.overheadSeen;
+      if (introNext || o.intro) gap += O.firstOverheadExtraGap;
       // Speed keeps rising during the gap, so size it at the speed it will have
       // reached by then; at the current speed the gap would arrive early.
       const arrivalSpeed = Math.min(CONFIG.speed.max, speed + CONFIG.speed.accel * gap);

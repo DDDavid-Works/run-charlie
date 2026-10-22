@@ -133,6 +133,30 @@ test('edge-to-edge gap between obstacles never drops below the minimum', () => {
   assert.ok(checked > 500, `only ${checked} gaps checked`);
 });
 
+test("a run's first overhead appears alone, with extra space before and after it", () => {
+  const O = CONFIG.obstacle;
+  // Edge-to-edge seconds between two spawns, as in the gap test above.
+  const clearance = (a, b) => ((b.time - a.time) * ((a.speed + b.speed) / 2) - a.o.w) / b.speed;
+  for (let seed = 1; seed <= 30; seed++) {
+    const { spawns } = simulate({ seed, seconds: 60, dt: 1 / 60, bot: true });
+    const i = spawns.findIndex((s) => s.o.type === 'overhead');
+    assert.ok(i > 0 && i < spawns.length - 1, `seed ${seed}: no overhead with neighbours`);
+    assert.ok(spawns[i].o.intro, `seed ${seed}: first overhead not marked as intro`);
+    assert.equal(spawns.filter((s) => s.o.intro).length, 1, `seed ${seed}: more than one intro`);
+    const before = clearance(spawns[i - 1], spawns[i]);
+    const after = clearance(spawns[i], spawns[i + 1]);
+    const want = O.minGapSeconds + O.typeSwitchExtraGap + O.firstOverheadExtraGap - 0.02;
+    assert.ok(before >= want, `seed ${seed}: ${before.toFixed(3)}s before the first overhead`);
+    // After it the next one may be another overhead (no switch), so no switch extra is owed.
+    assert.ok(after >= want - O.typeSwitchExtraGap, `seed ${seed}: ${after.toFixed(3)}s after the first overhead`);
+  }
+  // A restart introduces the slide again.
+  const m = new ObstacleManager(mulberry32(3));
+  m.overheadSeen = true;
+  m.reset();
+  assert.equal(m.overheadSeen, false);
+});
+
 test('a reactive bot survives long runs at several frame rates (no unavoidable sequences)', () => {
   for (const dt of [1 / 30, 1 / 60, 1 / 144]) {
     for (let seed = 1; seed <= 25; seed++) {
