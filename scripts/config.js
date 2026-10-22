@@ -74,7 +74,7 @@ export const CONFIG = {
       tall:         { type: 'ground',   w: 26,  h: 50 },
       trashcan:     { type: 'ground',   w: 30,  h: 42 },
       double:       { type: 'ground',   w: 76,  h: 40, posts: 2 },
-      overhead:     { type: 'overhead', w: 60 },
+      overhead:     { type: 'overhead', w: 88 },
       // `tail` is cosmetic overhang past the hitbox (see the day theme's laundry row).
       overheadWide: { type: 'overhead', w: 130, tail: 190 },
     },

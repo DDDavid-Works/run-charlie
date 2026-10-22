@@ -5,12 +5,12 @@
 // skins maps each obstacle variant to a drawing: small, tall, trashcan and
 // double are ground obstacles (jump); overhead and overheadWide are the two
 // overhead variants (crawl). A skin can also be a list of drawings, and each
-// obstacle picks one at random. Overhead drawings available: bench, barrier,
+// obstacle picks one at random. Overhead drawings available: cart, barrier,
 // laundry, laundryRow, branch.
 //
 // obstacleFx styles every obstacle drawing: shadow (ground oval), outline and
 // outlineWidth (world px), tint (washed over the art, null for none), rim and
-// rimWidth (lit top edge, null for none), glow (barrier lamps, null for none).
+// rimWidth (lit top edge, null for none), glow (lamps on the barrier and cart, null for none).
 export const THEMES = {
   night: {
     label: 'Night',
@@ -30,7 +30,7 @@ export const THEMES = {
     textDim: '#c4cbe0',
     accent: '#ffb347',
     fx: { dust: '200, 205, 220' },
-    skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'bench', overheadWide: 'barrier' },
+    skins: { small: 'hydrant', tall: 'cone', trashcan: 'trashcan', double: 'doghouse', overhead: 'cart', overheadWide: 'barrier' },
     // Cool, dimmed colors under moonlight, with a pale top edge.
     obstacleFx: {
       shadow: 'rgba(8, 10, 20, 0.45)',

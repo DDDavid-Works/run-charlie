@@ -68,10 +68,11 @@ const COLORS = {
   board: '#5b86a8',
   boardDark: 'rgba(27, 31, 42, 0.4)',
   houseCream: '#f6f1e6',
-  flower: '#ff9ec2',
-  bench: '#a8703a',
-  benchSeat: '#c98f55',
-  benchLeg: '#3a3f4e',
+  post: '#3a3f4e',
+  sign: '#f6f1e6',
+  bun: '#e0a85a',
+  sausage: '#c4553a',
+  mustard: '#ffd23f',
   steel: '#6b7488',
   barrierRed: '#e05a6d',
   barrierWhite: '#f6f1e6',
@@ -322,7 +323,7 @@ export class ObstacleManager {
         }
       }
       ctx.restore();
-      if (fx.glow && skin === 'barrier') this.drawLampGlow(ctx, o, fx.glow);
+      if (fx.glow) this.drawLampGlow(ctx, o, skin, fx.glow);
     }
     for (const u of this.upcoming) {
       if (!this.buildLayers(u.o, theme, s, 1)) break;
@@ -402,19 +403,29 @@ export class ObstacleManager {
     ctx.restore();
   }
 
-  // Night: the barrier's amber lamps glow and stay bright through the tint.
-  drawLampGlow(ctx, o, color) {
-    for (const lx of [o.x + 9, o.x + o.w - 9]) {
-      const g = ctx.createRadialGradient(lx, o.y - 3, 2, lx, o.y - 3, 22);
+  // Lamps a drawing has, as { x, y, r } in world coordinates.
+  lampsFor(o, skin) {
+    if (skin === 'barrier') return [{ x: o.x + 9, y: o.y - 3, r: 4 }, { x: o.x + o.w - 9, y: o.y - 3, r: 4 }];
+    if (skin === 'cart') {
+      const { hem, scallops } = this.cartLayout(o);
+      return [{ x: o.x + o.w / scallops, y: hem + 9, r: 3.5 }]; // where the first two scallops meet
+    }
+    return [];
+  }
+
+  // Night: lamps glow and stay bright through the tint.
+  drawLampGlow(ctx, o, skin, color) {
+    for (const { x, y, r } of this.lampsFor(o, skin)) {
+      const g = ctx.createRadialGradient(x, y, r / 2, x, y, r * 5.5);
       g.addColorStop(0, color);
       g.addColorStop(1, 'rgba(255, 179, 71, 0)');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(lx, o.y - 3, 22, 0, Math.PI * 2);
+      ctx.arc(x, y, r * 5.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = COLORS.lamp;
       ctx.beginPath();
-      ctx.arc(lx, o.y - 3, 4, 0, Math.PI * 2);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -525,7 +536,7 @@ export class ObstacleManager {
   // are built from layers (see layersFor) so their hanging parts can sway.
   drawOverhead(ctx, o, skin) {
     if (skin === 'barrier') this.drawBarrier(ctx, o);
-    else this.drawBench(ctx, o);
+    else this.drawCart(ctx, o);
   }
 
   // Legs or posts from the obstacle's bottom edge down to the ground.
@@ -534,36 +545,108 @@ export class ObstacleManager {
     for (const x of xs) ctx.fillRect(o.x + x, o.y + o.h, width, CONFIG.groundY - o.y - o.h);
   }
 
-  // A park bench with a tall hedge growing up its back. Crawl under the seat.
-  drawBench(ctx, o) {
-    const bottom = o.y + o.h;
-    const seatY = bottom - 10;
-    const backTop = seatY - 46;
-    this.drawLegs(ctx, o, [5, o.w - 10], 5, COLORS.benchLeg);
+  // Where the cart's umbrella hem and counter sit, shared with its lantern.
+  cartLayout(o) {
+    // One umbrella scallop per ~18px of width.
+    return { hem: o.y + 42, counter: o.y + 62, scallops: Math.max(4, Math.round(o.w / 18)) };
+  }
 
-    ctx.fillStyle = COLORS.leaf;                     // hedge
+  // A hot dog cart: a striped umbrella on a pole over a steel cart with a hot
+  // dog sign, standing on a wheel and a stand leg. A lantern hangs from the
+  // umbrella. Crawl under the cart.
+  drawCart(ctx, o) {
+    const L = o.x;
+    const R = o.x + o.w;
+    const T = o.y;
+    const B = o.y + o.h;
+    const G = CONFIG.groundY;
+    const cx = L + o.w / 2;
+    const { hem, counter, scallops } = this.cartLayout(o);
+
+    ctx.fillStyle = COLORS.post;                     // wheel on a strut, stand leg with a foot
+    ctx.fillRect(L + 12, B, 3, G - B - 14);
+    ctx.fillRect(R - 13, B, 4, G - B - 2);
+    ctx.fillRect(R - 16, G - 3, 10, 3);
     ctx.beginPath();
-    ctx.roundRect(o.x + 2, o.y, o.w - 4, backTop - o.y + 2, [16, 16, 0, 0]);
+    ctx.arc(L + 13.5, G - 9, 9, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = COLORS.leafDark;                 // clipped-hedge stripes
-    for (let sx = o.x + 10; sx < o.x + o.w - 8; sx += 12) {
-      ctx.fillRect(sx, o.y + 14, 3, backTop - o.y - 14);
+    ctx.fillStyle = COLORS.steel;
+    ctx.beginPath();
+    ctx.arc(L + 13.5, G - 9, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = COLORS.steel;                    // umbrella pole
+    ctx.fillRect(cx - 1.5, hem - 6, 3, counter - hem + 6);
+
+    ctx.fillRect(L + 2, counter, o.w - 4, B - counter); // cart body
+    ctx.fillStyle = COLORS.canLid;                   // counter top
+    ctx.fillRect(L, counter, o.w, 6);
+    ctx.fillStyle = COLORS.boardDark;                // panel seams and skirt
+    for (const f of [1 / 3, 2 / 3]) ctx.fillRect(L + o.w * f - 1, counter + 44, 2, B - counter - 50);
+    ctx.fillStyle = COLORS.post;
+    ctx.fillRect(L + 2, B - 6, o.w - 4, 6);
+    ctx.fillStyle = COLORS.sign;                     // sign with a hot dog
+    ctx.beginPath();
+    const signW = Math.min(o.w - 12, 58);
+    ctx.roundRect(cx - signW / 2, counter + 12, signW, 26, 4);
+    ctx.fill();
+    this.drawHotDog(ctx, cx, counter + 25);
+
+    // Umbrella: a dome with a scalloped hem, in red and cream wedges.
+    const canopy = new Path2D();
+    canopy.moveTo(L, hem);
+    canopy.quadraticCurveTo(L + 2, T + 4, cx, T);
+    canopy.quadraticCurveTo(R - 2, T + 4, R, hem);
+    const n = scallops;
+    for (let i = n - 1; i >= 0; i--) {
+      const sx = L + (o.w * (i + 0.5)) / n;
+      canopy.arc(sx, hem, o.w / n / 2, 0, Math.PI);
     }
-    ctx.fillStyle = COLORS.flower;
-    for (const [fx, fy] of [[0.25, 0.3], [0.7, 0.2], [0.5, 0.6], [0.8, 0.75], [0.2, 0.8]]) {
+    canopy.closePath();
+    ctx.fillStyle = COLORS.barrierWhite;
+    ctx.fill(canopy);
+    ctx.save();
+    ctx.clip(canopy);
+    ctx.fillStyle = COLORS.barrierRed;
+    for (let i = 0; i < 6; i += 2) {
       ctx.beginPath();
-      ctx.arc(o.x + o.w * fx, o.y + (backTop - o.y) * fy + 8, 2.5, 0, Math.PI * 2);
+      ctx.moveTo(cx, T - 10);
+      ctx.lineTo(L - 10 + ((o.w + 20) * i) / 6, hem + 12);
+      ctx.lineTo(L - 10 + ((o.w + 20) * (i + 1)) / 6, hem + 12);
       ctx.fill();
     }
+    ctx.restore();
+    ctx.fillStyle = COLORS.steel;                    // finial
+    ctx.beginPath();
+    ctx.arc(cx, T - 2, 2.5, 0, Math.PI * 2);
+    ctx.fill();
 
-    ctx.fillStyle = COLORS.bench;                    // slatted backrest
-    ctx.fillRect(o.x, backTop, o.w, seatY - backTop);
-    ctx.fillStyle = COLORS.boardDark;
-    for (let y = backTop + 11; y < seatY - 4; y += 12) {
-      ctx.fillRect(o.x, y, o.w, 2);
-    }
-    ctx.fillStyle = COLORS.benchSeat;                // seat plank
-    ctx.fillRect(o.x - 2, seatY, o.w + 4, 10);
+    const [lamp] = this.lampsFor(o, 'cart');         // lantern on a cord
+    ctx.fillStyle = COLORS.post;
+    ctx.fillRect(lamp.x - 0.5, hem + 2, 1, lamp.y - hem - 4);
+    ctx.fillRect(lamp.x - 2.5, lamp.y - lamp.r - 1.5, 5, 2);
+    ctx.fillStyle = COLORS.lamp;
+    ctx.beginPath();
+    ctx.arc(lamp.x, lamp.y, lamp.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // A hot dog in a bun with a mustard zigzag, centred on (cx, cy).
+  drawHotDog(ctx, cx, cy) {
+    ctx.fillStyle = COLORS.bun;
+    ctx.beginPath();
+    ctx.roundRect(cx - 14, cy - 3, 28, 9, 4.5);
+    ctx.fill();
+    ctx.fillStyle = COLORS.sausage;
+    ctx.beginPath();
+    ctx.roundRect(cx - 17, cy - 6, 34, 7, 3.5);
+    ctx.fill();
+    ctx.strokeStyle = COLORS.mustard;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - 12, cy - 3);
+    for (let i = 1; i <= 8; i++) ctx.lineTo(cx - 12 + i * 3, cy - 3 + (i % 2 ? -2 : 1));
+    ctx.stroke();
   }
 
   // A road-works gantry: steel frame with a warning sign on top, a red and white
@@ -571,7 +654,7 @@ export class ObstacleManager {
   drawBarrier(ctx, o) {
     const bottom = o.y + o.h;
     const barTop = bottom - 40;
-    this.drawLegs(ctx, o, [6, o.w - 12], 6, COLORS.benchLeg);
+    this.drawLegs(ctx, o, [6, o.w - 12], 6, COLORS.post);
 
     ctx.fillStyle = COLORS.steel;
     ctx.fillRect(o.x, o.y, o.w, barTop - o.y);
@@ -736,23 +819,31 @@ export class ObstacleManager {
     }
   }
 
-  // Short overhead (day): one long laundry item on a washing line: a pair of
-  // trousers in a random color, or sometimes a striped towel. Which one is fixed
-  // per obstacle by its seed. Crawl under it.
+  // Short overhead (day): long laundry items side by side on a washing line,
+  // one per ~44px of width (two at the default width): trousers in random
+  // colors, or sometimes striped towels, never all towels. Fixed per obstacle
+  // by its seed. Crawl under them.
   laundryLayers(o) {
     const rand = seeded(o.seed);
     const bottom = o.y + o.h;
-    const towel = rand() < 0.3;
-    const style = pick(towel ? TOWELS : PANTS, rand);
-    const x = o.x + (towel ? 11 : 7);
-    const w = o.w - (towel ? 22 : 14);
-    // Pegs sit 12px in from the line's ends, whatever the item's width.
+    const n = Math.max(1, Math.round(o.w / 44));
+    const slot = (o.w - 10) / n;                    // the line between the poles, split evenly
+    const items = Array.from({ length: n }, () => {
+      const towel = rand() < 0.3;
+      return { towel, style: pick(towel ? TOWELS : PANTS, rand) };
+    });
+    if (items.every((item) => item.towel)) items[0] = { towel: false, style: pick(PANTS, rand) };
     return [
       this.lineLayer(o, o.w),
-      this.hangingLayer(o, o.x + o.w / 2, x, w, bottom - o.y, (c) => {
-        if (towel) this.drawTowel(c, { x, w, top: o.y, bottom, fill: style });
-        else this.drawPants(c, { x, w, top: o.y, bottom, ...style });
-      }, o.x + 12 - x),
+      ...items.map(({ towel, style }, i) => {
+        const cx = o.x + 5 + slot * (i + 0.5);
+        const w = slot - (towel ? 9 : 2);
+        const x = cx - w / 2;
+        return this.hangingLayer(o, cx, x, w, bottom - o.y, (c) => {
+          if (towel) this.drawTowel(c, { x, w, top: o.y, bottom, fill: style });
+          else this.drawPants(c, { x, w, top: o.y, bottom, ...style });
+        });
+      }),
     ];
   }
 
