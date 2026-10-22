@@ -78,14 +78,25 @@ export const CONFIG = {
       // `tail` is cosmetic overhang past the hitbox (see the day theme's laundry row).
       overheadWide: { type: 'overhead', w: 130, tail: 190 },
     },
-    // Difficulty tiers unlock by score. Variants are picked by weight.
+    // Combos: planned jump-then-slide pairs with a fixed gap (seconds, edge to
+    // edge) much tighter than the normal type-switch gap. Holding slide in the
+    // air starts the crawl on landing; without that, even the latest possible
+    // jump lands with >= 0.25s left to press slide (checked in tests/run.mjs).
+    // Tier weights pick a combo by name, like a variant.
+    combos: {
+      hopUnder:   { steps: ['small', 'overhead'],      gaps: [0.85] },
+      coneUnder:  { steps: ['tall', 'overhead'],       gaps: [0.85] },
+      houseUnder: { steps: ['double', 'overheadWide'], gaps: [0.85] },
+    },
+    // Difficulty tiers unlock by score. Variants and combos are picked by weight.
     // One new idea at a time: jump only, then slide, then doubles and long
-    // slides, then the same mix with tighter gaps.
+    // slides, then tighter gaps with jump-then-slide combos, then more combos.
     tiers: [
       { fromScore: 0,    weights: { small: 1, tall: 1, trashcan: 1 },                                  maxGapSeconds: 1.9 },
       { fromScore: 250,  weights: { small: 2, tall: 2, trashcan: 2, overhead: 3 },                   maxGapSeconds: 1.8 },
       { fromScore: 600,  weights: { small: 2, tall: 2, trashcan: 2, double: 2, overhead: 3, overheadWide: 1 }, maxGapSeconds: 1.6 },
-      { fromScore: 1100, weights: { small: 2, tall: 2, trashcan: 2, double: 3, overhead: 3, overheadWide: 2 }, maxGapSeconds: 1.4 },
+      { fromScore: 1100, weights: { small: 2, tall: 2, trashcan: 2, double: 3, overhead: 3, overheadWide: 2, hopUnder: 1, coneUnder: 1 }, maxGapSeconds: 1.4 },
+      { fromScore: 1600, weights: { small: 2, tall: 2, trashcan: 2, double: 3, overhead: 3, overheadWide: 2, hopUnder: 2, coneUnder: 2, houseUnder: 1 }, maxGapSeconds: 1.4 },
     ],
     // Gaps are measured in seconds of travel (edge to edge), so they scale with
     // speed. Jump airtime = 2 * jumpVelocity / gravity (~0.67s); the minimum

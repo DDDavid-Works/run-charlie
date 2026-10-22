@@ -29,7 +29,7 @@ Your best score is saved in your browser (`localStorage`) and never leaves it.
 
 ## Tuning
 
-All gameplay constants are in `scripts/config.js`: physics, speed ramp, scoring, obstacle variants, and difficulty tiers.
+All gameplay constants are in `scripts/config.js`: physics, speed ramp, scoring, obstacle variants, combos (planned jump-then-slide pairs with a fixed, tighter gap), and difficulty tiers.
 
 ## PWA (install and offline)
 
@@ -62,7 +62,7 @@ Check the service worker and page wiring too:
 node tests/sw.test.mjs
 ```
 
-Headless checks for obstacle fairness (minimum gaps, tier unlocks, a reactive bot that must survive long runs), score/speed progression, and best-score storage handling:
+Headless checks for obstacle fairness (minimum gaps, tier unlocks, combos that leave time to slide after any jump that clears the first obstacle, a reactive bot that must survive long runs), score/speed progression, and best-score storage handling:
 
 ```bash
 node tests/run.mjs

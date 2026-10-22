@@ -118,11 +118,25 @@ export class ObstacleManager {
 
   reset() {
     this.list = [];
-    // The next variant is chosen one spawn ahead so the gap that precedes it
-    // can account for a jump <-> slide switch.
-    this.nextName = pickVariant(0, this.rng);
+    // Obstacles waiting to spawn, chosen at least one spawn ahead so the gap
+    // that precedes each can account for a jump <-> slide switch. A combo
+    // queues all its steps at once; steps after the first carry a fixed gap.
+    this.upcoming = [];
+    this.queueNext(0);
     // distance (px) still to travel before the next obstacle spawns
     this.distanceToNext = CONFIG.speed.start * O.firstSpawnDelay;
+  }
+
+  queueNext(tier) {
+    const name = pickVariant(tier, this.rng);
+    const combo = O.combos[name];
+    if (!combo) {
+      this.upcoming.push({ name });
+      return;
+    }
+    combo.steps.forEach((step, i) => {
+      this.upcoming.push({ name: step, combo: name, comboStep: i, gap: i > 0 ? combo.gaps[i - 1] : undefined });
+    });
   }
 
   update(dt, speed, score = 0) {
@@ -134,10 +148,13 @@ export class ObstacleManager {
     this.distanceToNext -= dx;
     if (this.distanceToNext <= 0) {
       const tier = tierFor(score);
-      const o = this.spawn(this.nextName);
-      this.nextName = pickVariant(tier, this.rng);
-      const switched = O.variants[this.nextName].type !== o.type;
-      const gap = gapSeconds(tier, switched, this.rng);
+      const step = this.upcoming.shift();
+      const o = this.spawn(step.name);
+      if (step.combo) Object.assign(o, { combo: step.combo, comboStep: step.comboStep });
+      if (!this.upcoming.length) this.queueNext(tier);
+      const next = this.upcoming[0];
+      const switched = O.variants[next.name].type !== o.type;
+      const gap = next.gap ?? gapSeconds(tier, switched, this.rng);
       // Speed keeps rising during the gap, so size it at the speed it will have
       // reached by then; at the current speed the gap would arrive early.
       const arrivalSpeed = Math.min(CONFIG.speed.max, speed + CONFIG.speed.accel * gap);

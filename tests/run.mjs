@@ -111,6 +111,12 @@ test('edge-to-edge gap between obstacles never drops below the minimum', () => {
       const elapsed = cur.time - prev.time;
       const avgSpeed = (prev.speed + cur.speed) / 2;
       const clearanceSeconds = (elapsed * avgSpeed - prev.o.w) / cur.speed;
+      // Steps inside a combo use the combo's own tighter gap (tested below).
+      if (cur.o.comboStep > 0) {
+        const planned = CONFIG.obstacle.combos[cur.o.combo].gaps[cur.o.comboStep - 1];
+        assert.ok(clearanceSeconds >= planned - 0.02, `seed ${seed}: ${cur.o.combo} gap ${clearanceSeconds.toFixed(3)}s`);
+        continue;
+      }
       assert.ok(
         clearanceSeconds >= CONFIG.obstacle.minGapSeconds - 0.02,
         `seed ${seed}: gap ${clearanceSeconds.toFixed(3)}s between ${prev.o.name} and ${cur.o.name}`
@@ -136,15 +142,75 @@ test('a reactive bot survives long runs at several frame rates (no unavoidable s
   }
 });
 
-test('long runs reach every tier, every variant, and the speed cap', () => {
+test('long runs reach every tier, every variant, every combo, and the speed cap', () => {
   const names = new Set();
+  const combos = new Set();
   let last;
   for (let seed = 1; seed <= 10; seed++) {
     last = simulate({ seed, seconds: 180, dt: 1 / 60, bot: true });
-    last.spawns.forEach((s) => names.add(s.o.name));
+    last.spawns.forEach((s) => {
+      names.add(s.o.name);
+      if (s.o.combo) {
+        combos.add(s.o.combo);
+        assert.ok(tierFor(s.score) >= 3, `${s.o.combo} at score ${s.score}`);
+      }
+    });
   }
   assert.deepEqual([...names].sort(), Object.keys(CONFIG.obstacle.variants).sort());
+  assert.deepEqual([...combos].sort(), Object.keys(CONFIG.obstacle.combos).sort());
   assert.equal(last.finalSpeed, CONFIG.speed.max);
+});
+
+// Plays one combo at a fixed speed: jump at `jumpAt` seconds, then press slide
+// `slideDelay` seconds after landing (null = no combo follow-up, ground only).
+// Slide is released once the overhead has passed. Returns true if no collision.
+function playCombo(steps, gaps, speed, jumpAt, slideDelay, dt = 1 / 240) {
+  const m = new ObstacleManager(() => 0.5);
+  const obs = [];
+  let x = PLAYER_RIGHT + speed * 1.0; // first obstacle arrives after 1s
+  const count = slideDelay === null ? 1 : steps.length;
+  for (let i = 0; i < count; i++) {
+    const o = m.spawn(steps[i]);
+    o.x = x;
+    obs.push(o);
+    x += o.w + speed * (gaps[i] ?? 0);
+  }
+  m.list = obs;
+  const p = new Player();
+  let slideAt = Infinity;
+  let jumped = false;
+  for (let t = 0; t < 4; t += dt) {
+    if (t >= jumpAt && !jumped) {
+      p.jump(false);
+      jumped = true;
+    }
+    const wasAir = !p.grounded;
+    for (const o of obs) o.x -= speed * dt;
+    const hb = p.hitbox;
+    p.update(dt, m.overheadAbove(hb.x, hb.x + hb.w));
+    if (wasAir && p.grounded && slideDelay !== null && slideAt === Infinity) slideAt = t + slideDelay;
+    if (t >= slideAt && !p.slideHeld && obs.some((o) => o.type === 'overhead' && o.x + o.w >= PLAYER_LEFT)) p.pressSlide();
+    if (p.slideHeld && obs.every((o) => o.type !== 'overhead' || o.x + o.w < PLAYER_LEFT)) p.releaseSlide();
+    if (obs.some((o) => hit(p.hitbox, o))) return false;
+  }
+  return true;
+}
+
+test('combos are fair: any jump that clears the first obstacle leaves time to slide under the next', () => {
+  const REACTION = 0.25; // s from landing to pressing slide, with no buffering in the air
+  for (const [name, { steps, gaps }] of Object.entries(CONFIG.obstacle.combos)) {
+    for (const speed of [CONFIG.speed.start, CONFIG.speed.max]) {
+      let valid = 0;
+      for (let jumpAt = 0; jumpAt < 1.2; jumpAt += 0.005) {
+        if (!playCombo(steps, gaps, speed, jumpAt, null)) continue; // this jump fails the ground obstacle anyway
+        valid++;
+        assert.ok(playCombo(steps, gaps, speed, jumpAt, REACTION), `${name} @${speed}: jump at ${jumpAt.toFixed(3)}s clears the first obstacle but not the second`);
+        assert.ok(playCombo(steps, gaps, speed, jumpAt, 0), `${name} @${speed}: slide held through landing fails`);
+      }
+      // The jump window itself must not be frame-perfect.
+      assert.ok(valid * 0.005 >= 0.2, `${name} @${speed}: jump window only ${(valid * 0.005).toFixed(3)}s`);
+    }
+  }
 });
 
 test('speed rises gradually and score grows with distance', () => {
